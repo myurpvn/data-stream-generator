@@ -1,0 +1,4 @@
+pendulum
+requests
+kafka-python
+structlog
