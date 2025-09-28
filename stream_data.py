@@ -1,16 +1,14 @@
 import argparse
 import json
-
-import uuid
 import random
 import time
 from datetime import datetime
-from kafka import KafkaProducer, errors
 
 import requests
+from kafka import KafkaProducer, errors
+from structlog import get_logger
 
-# from kafka_producer import init_producer
-
+logger = get_logger()
 RETRY_COUNT = 3
 
 
@@ -29,22 +27,19 @@ def get_data():
     r = requests.get(URL, headers=header, params=params)
 
     data = r.json()
-    with open("raw_data.json", "w+") as f:
+    with open("raw_data.json", "w") as f:
         json.dump(data, f, indent=4)
-
-    # print(data)
-    # print(data_dict)
 
     res = data["query"]["recentchanges"]
 
     return json.dumps(res)
 
 
-def get_data_dummy() -> str:
+def get_dummy_data() -> str:
 
     dt = datetime.now()
 
-    k_message = {
+    data = {
         "user-id": str(random.randint(0, 999999)).zfill(6),
         "action": random.choice(
             ["click", "like", "unlike", "repost", "subscribe", "unsubscribe"]
@@ -55,21 +50,9 @@ def get_data_dummy() -> str:
         "timestamp": dt.isoformat(),
     }
 
-    k_message_ser = json.dumps(k_message)
-    print("got message: ", k_message_ser)
-    return k_message_ser
-
-
-def send_message(producer, topic: str, message: str):
-    # Produce a message
-    try:
-        producer.send(topic, message.encode("utf-8"))
-        producer.flush()
-        # print("Message produced without Avro schema!")
-    except Exception as e:
-        print(f"Error producing message: {e}")
-    # finally:
-    #     producer.close()
+    data_str = json.dumps(data)
+    logger.info("got message: ", msg=data_str)
+    return data_str
 
 
 if __name__ == "__main__":
@@ -84,19 +67,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     topic = args.topic
 
-    print("starting script...")
-    print(f"Producing Topic: '{topic}'")
-    # print(f"retry count: {os.getenv('RETRY_COUNT')}")
+    logger.info("starting script...")
+    logger.info(f"using to topic: '{topic}'")
 
-    # producer = init_producer(topic)
     retry = 0
     producer = None
 
     for _ in range(RETRY_COUNT):
         try:
-            # Create a standard Kafka Producer
             producer = KafkaProducer(
-                bootstrap_servers="broker:19092",
+                bootstrap_servers="kafka:19092",
                 # bootstrap_servers="localhost:9092",
                 # sasl_mechanism="SCRAM-SHA-256",
                 # security_protocol="SASL_SSL",
@@ -108,34 +88,34 @@ if __name__ == "__main__":
         except errors.NoBrokersAvailable:
             retry += 1
             if retry < RETRY_COUNT:
-                print(f"retrying..{retry}[{RETRY_COUNT}]")
+                logger.info(f"retrying..{retry}[{RETRY_COUNT}]")
                 continue
-            print(f"retry limit reached (limit: {RETRY_COUNT})")
+            logger.info(f"retry limit reached (limit: {RETRY_COUNT})")
 
         # except errors.RequestTimedOutError:
-        #     print("request-time-out")
+        #     logger.error("request-time-out")
 
         except Exception:
             raise
 
-    if producer is not None:
-        try:
-            # while True:
-            print("sending message")
-            # producer.send(topic, b"raw_bytes")
-            # message = get_data()
-            # for i in range(10):
-            key = 0
-            while True:
-                message = get_data_dummy()
-                # send_message(producer, topic, message)
-                producer.send(
-                    topic, message.encode("utf-8"), key=str(key).encode("utf-8")
-                )
-                time.sleep(1)
-                # print(f"Message count: {i+1}")
-                key += 1
-            producer.commit_transaction()
-        finally:
-            producer.close()
-            print("producer closed")
+    if producer is None:
+        logger.error("No producers available")
+        raise Exception("No producers available")
+
+    try:
+        logger.info("sending message")
+        key = 0
+        while True:
+
+            message = get_dummy_data()
+
+            producer.send(
+                topic,
+                message.encode("utf-8"),
+                key=str(key).encode("utf-8"),
+            )
+            time.sleep(1)
+            key += 1
+    finally:
+        producer.close()
+        logger.info("producer closed")

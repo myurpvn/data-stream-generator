@@ -1,20 +1,12 @@
-up-d:
+generator-up:
 	docker compose up -d
 
-build-up-d:
-	docker compose up --build -d
+generator-down:
+	docker compose down
 
-up:
-	docker compose up
-
-build-up:
-	docker compose up --build
-
+l=10
 consumer-logs:
-	docker logs --tail 10 consumer
+	docker logs --tail $(l) consumer
 
 producer-logs:
-	docker logs --tail 10 producer
-
-down:
-	docker compose down
+	docker logs --tail $(l) producer
